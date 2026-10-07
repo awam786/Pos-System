@@ -73,6 +73,7 @@ async def current_user(
 async def logout(
     user: CurrentUser,
 ) -> LogoutResponse:
-    # JWT access tokens are stateless. The frontend removes the token.
+    # JWT access tokens are stateless.
+    # The frontend removes the token on logout.
     # Server-side token revocation can be added later if required.
     return LogoutResponse()
