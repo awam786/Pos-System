@@ -10,11 +10,15 @@ from app.schemas.auth import (
     LogoutResponse,
     UserSummary,
 )
-from app.services.auth import authenticate_user, issue_token, mark_user_login
+from app.services.auth import (
+    authenticate_user,
+    issue_token,
+    mark_user_login,
+)
 
 
 router = APIRouter(
-    prefix="/api/auth",
+    prefix="/auth",
     tags=["Authentication"],
 )
 
