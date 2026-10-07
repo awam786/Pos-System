@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 
 from app.dependencies import CurrentUser, DbSession
 from app.permissions import Permission
@@ -68,7 +68,7 @@ async def create(
 ) -> HeldSaleResponse:
     require_permission(
         current_user,
-        Permission.SALES,
+        Permission.CREATE_SALE,
     )
 
     held_sale = await create_held_sale(
@@ -94,7 +94,7 @@ async def list_all(
 ) -> HeldSaleListResponse:
     require_permission(
         current_user,
-        Permission.SALES,
+        Permission.VIEW_SALES,
     )
 
     items, total = await list_held_sales(
@@ -124,7 +124,7 @@ async def get(
 ) -> HeldSaleResponse:
     require_permission(
         current_user,
-        Permission.SALES,
+        Permission.VIEW_SALES,
     )
 
     held_sale = await get_held_sale(
@@ -154,10 +154,10 @@ async def delete(
     held_sale_id: UUID,
     db: DbSession,
     current_user: CurrentUser,
-):
+) -> Response:
     require_permission(
         current_user,
-        Permission.SALES,
+        Permission.VOID_SALE,
     )
 
     held_sale = await get_held_sale(
@@ -178,4 +178,6 @@ async def delete(
         held_sale_id,
     )
 
-    return None
+    return Response(
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
