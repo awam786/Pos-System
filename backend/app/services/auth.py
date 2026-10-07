@@ -32,10 +32,15 @@ async def authenticate_user(
 
 
 def issue_token(user: User) -> str:
+    role = user.role
+
+    if hasattr(role, "value"):
+        role = role.value
+
     return create_access_token(
         subject=str(user.id),
         shop_id=str(user.shop_id),
-        role=user.role.value,
+        role=str(role),
     )
 
 
@@ -43,9 +48,6 @@ async def mark_user_login(
     db: AsyncSession,
     user: User,
 ) -> None:
-    # The model intentionally uses the common timestamp field as the
-    # account activity timestamp until a dedicated login-history model
-    # is introduced in the audit/session layer.
     user.updated_at = datetime.now(timezone.utc)
 
     await db.flush()
