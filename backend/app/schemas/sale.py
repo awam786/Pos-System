@@ -1,101 +1,101 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
-from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+PAYMENT_METHODS = {
+    "cash",
+    "card",
+    "bank",
+    "other",
+}
 
 
 class SaleItemCreate(BaseModel):
     product_id: UUID
     quantity: Decimal = Field(gt=0)
-    unit_price: Optional[Decimal] = Field(default=None, ge=0)
-    discount_type: str = "none"
-    discount_value: Decimal = Field(default=Decimal("0"), ge=0)
+    unit_price: Decimal | None = Field(default=None, ge=0)
+    discount: Decimal = Field(default=Decimal("0.00"), ge=0)
 
-    @field_validator("discount_type")
+    @field_validator("quantity", "unit_price", "discount")
     @classmethod
-    def validate_discount_type(cls, value: str) -> str:
-        value = value.lower().strip()
-        if value not in {"none", "fixed", "percentage"}:
-            raise ValueError("Discount type must be none, fixed, or percentage.")
-        return value
+    def normalize_decimal(cls, value):
+        if value is None:
+            return value
+        return Decimal(str(value))
 
 
 class SalePaymentCreate(BaseModel):
     method: str
     amount: Decimal = Field(gt=0)
-    reference: Optional[str] = None
-    notes: Optional[str] = None
+    received_amount: Decimal | None = Field(default=None, ge=0)
+    reference: str | None = None
+    notes: str | None = None
 
     @field_validator("method")
     @classmethod
     def validate_method(cls, value: str) -> str:
-        value = value.lower().strip()
-        if value not in {"cash", "bank_transfer", "card", "other"}:
+        value = value.strip().lower()
+
+        if value not in PAYMENT_METHODS:
             raise ValueError(
-                "Payment method must be cash, bank_transfer, card, or other."
+                "Payment method must be cash, card, bank or other."
             )
+
         return value
 
 
 class SaleCreate(BaseModel):
-    customer_id: Optional[UUID] = None
+    customer_id: UUID | None = None
     items: list[SaleItemCreate] = Field(min_length=1)
-    bill_discount_type: str = "none"
-    bill_discount_value: Decimal = Field(default=Decimal("0"), ge=0)
+    discount: Decimal = Field(default=Decimal("0.00"), ge=0)
     payments: list[SalePaymentCreate] = Field(default_factory=list)
-    notes: Optional[str] = None
-    cash_received: Optional[Decimal] = Field(default=None, ge=0)
-
-    @field_validator("bill_discount_type")
-    @classmethod
-    def validate_bill_discount_type(cls, value: str) -> str:
-        value = value.lower().strip()
-        if value not in {"none", "fixed", "percentage"}:
-            raise ValueError(
-                "Bill discount type must be none, fixed, or percentage."
-            )
-        return value
+    notes: str | None = None
 
 
 class SaleItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     product_id: UUID
     product_name: str
-    sku: Optional[str] = None
+    product_code: str | None
     quantity: Decimal
     unit_price: Decimal
-    discount_type: str
-    discount_value: Decimal
-    discount_amount: Decimal
-    line_total: Decimal
+    discount: Decimal
+    total: Decimal
 
 
 class SalePaymentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     method: str
     amount: Decimal
-    reference: Optional[str] = None
-    notes: Optional[str] = None
+    received_amount: Decimal | None
+    change_amount: Decimal | None
+    reference: str | None
+    notes: str | None
 
 
 class SaleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
-    invoice_number: str
-    customer_id: Optional[UUID] = None
-    user_id: UUID
+    receipt_number: str
+    customer_id: UUID | None
     subtotal: Decimal
-    discount_type: str
-    discount_value: Decimal
-    discount_amount: Decimal
-    grand_total: Decimal
+    discount: Decimal
+    total: Decimal
     paid_amount: Decimal
-    change_amount: Decimal
-    payment_status: str
+    credit_amount: Decimal
     status: str
-    notes: Optional[str] = None
+    notes: str | None
+    created_at: datetime
     items: list[SaleItemResponse] = Field(default_factory=list)
     payments: list[SalePaymentResponse] = Field(default_factory=list)
 
@@ -103,24 +103,16 @@ class SaleResponse(BaseModel):
 class SaleListResponse(BaseModel):
     items: list[SaleResponse]
     total: int
-
-
-class SaleSummaryResponse(BaseModel):
-    subtotal: Decimal
-    item_discount: Decimal
-    bill_discount: Decimal
-    grand_total: Decimal
-    paid_amount: Decimal
-    outstanding_amount: Decimal
-    change_amount: Decimal
-    payment_status: str
+    page: int
+    page_size: int
 
 
 class SaleCalculationRequest(BaseModel):
     items: list[SaleItemCreate] = Field(min_length=1)
-    bill_discount_type: str = "none"
-    bill_discount_value: Decimal = Field(default=Decimal("0"), ge=0)
+    discount: Decimal = Field(default=Decimal("0.00"), ge=0)
 
 
-class SaleCalculationResponse(SaleSummaryResponse):
-    items: list[SaleItemResponse]
+class SaleCalculationResponse(BaseModel):
+    subtotal: Decimal
+    discount: Decimal
+    total: Decimal
