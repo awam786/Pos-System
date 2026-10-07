@@ -38,7 +38,7 @@ def serialize_sale(sale) -> SaleResponse:
         total=sale.total,
         paid_amount=sale.paid_amount,
         credit_amount=sale.credit_amount,
-        status=str(sale.status),
+        status=sale.status,
         notes=sale.notes,
         created_at=sale.created_at,
         items=sale.items,
@@ -103,21 +103,18 @@ async def create(
     response_model=SaleListResponse,
 )
 async def list_all(
+    db: DbSession,
+    current_user: CurrentUser,
     page: int = 1,
     page_size: int = 50,
-    db: DbSession = None,
-    current_user: CurrentUser = None,
 ) -> SaleListResponse:
-    if db is None or current_user is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Sale dependencies were not initialized.",
-        )
-
     require_permission(
         current_user,
         Permission.VIEW_SALES,
     )
+
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
 
     sales, total = await list_sales(
         db,
@@ -156,5 +153,11 @@ async def get(
         current_user.shop_id,
         sale_id,
     )
+
+    if sale is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sale not found.",
+        )
 
     return serialize_sale(sale)
