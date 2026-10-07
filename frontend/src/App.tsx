@@ -1,30 +1,20 @@
 import {
   BarChart3,
   Boxes,
-  Calculator,
-  ChevronDown,
-  CircleDollarSign,
-  ClipboardList,
-  CreditCard,
-  FileText,
   LayoutDashboard,
   LogOut,
-  Menu,
+  Minus,
   Package,
+  Plus,
   Printer,
   Receipt,
   Search,
   Settings,
   ShoppingCart,
-  Store,
+  Trash2,
   Truck,
-  UserRound,
   Users,
   WalletCards,
-  X,
-  Plus,
-  Minus,
-  Trash2,
 } from "lucide-react";
 
 import {
@@ -36,9 +26,10 @@ import {
 } from "react";
 
 
-const API =
+const API = (
   import.meta.env.VITE_API_URL ||
-  "http://localhost:8000/api";
+  "http://localhost:8000/api"
+).replace(/\/$/, "");
 
 
 type User = {
@@ -86,7 +77,9 @@ type Dashboard = {
 };
 
 
-function money(value: number | string | null | undefined) {
+function money(
+  value: number | string | null | undefined,
+) {
   return `PKR ${Number(value || 0).toLocaleString(
     "en-PK",
     {
@@ -101,15 +94,20 @@ async function api(
   path: string,
   options: RequestInit = {},
 ) {
-  const token = localStorage.getItem("pos_token");
+  const token =
+    localStorage.getItem("pos_token");
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options.headers as Record<string, string> || {}),
+    ...((options.headers || {}) as Record<
+      string,
+      string
+    >),
   };
 
   if (token) {
-    headers.Authorization = `Bearer ${token}`;
+    headers.Authorization =
+      `Bearer ${token}`;
   }
 
   const response = await fetch(
@@ -121,20 +119,27 @@ async function api(
   );
 
   const contentType =
-    response.headers.get("content-type") || "";
+    response.headers.get("content-type") ||
+    "";
 
-  const body = contentType.includes("application/json")
-    ? await response.json()
-    : await response.text();
+  const body =
+    contentType.includes(
+      "application/json",
+    )
+      ? await response.json()
+      : await response.text();
 
   if (!response.ok) {
     const message =
-      typeof body === "object"
-        ? body.detail || body.message
+      typeof body === "object" && body
+        ? body.detail ||
+          body.message ||
+          `Request failed (${response.status})`
         : body;
 
     throw new Error(
-      message || `Request failed (${response.status})`,
+      message ||
+        `Request failed (${response.status})`,
     );
   }
 
@@ -169,16 +174,14 @@ function Login({
     setLoading(true);
 
     try {
-      const result = await api(
-        "/auth/login",
-        {
+      const result =
+        await api("/auth/login", {
           method: "POST",
           body: JSON.stringify({
             username,
             password,
           }),
-        },
-      );
+        });
 
       localStorage.setItem(
         "pos_token",
@@ -218,9 +221,10 @@ function Login({
         </div>
 
         <div className="login-description">
-          Professional point-of-sale management
-          for products, stock, sales, customers,
-          suppliers and daily cash operations.
+          Professional point-of-sale
+          management for products, stock,
+          sales, customers, suppliers and
+          daily cash operations.
         </div>
 
         {error && (
@@ -237,9 +241,12 @@ function Login({
           <input
             className="input"
             autoFocus
+            autoComplete="username"
             value={username}
             onChange={(event) =>
-              setUsername(event.target.value)
+              setUsername(
+                event.target.value,
+              )
             }
             placeholder="Enter username"
           />
@@ -253,9 +260,12 @@ function Login({
           <input
             className="input"
             type="password"
+            autoComplete="current-password"
             value={password}
             onChange={(event) =>
-              setPassword(event.target.value)
+              setPassword(
+                event.target.value,
+              )
             }
             placeholder="Enter password"
           />
@@ -286,12 +296,18 @@ function Login({
 function App() {
   const [user, setUser] =
     useState<User | null>(() => {
-      const stored =
-        localStorage.getItem("pos_user");
+      try {
+        const stored =
+          localStorage.getItem(
+            "pos_user",
+          );
 
-      return stored
-        ? JSON.parse(stored)
-        : null;
+        return stored
+          ? JSON.parse(stored)
+          : null;
+      } catch {
+        return null;
+      }
     });
 
 
@@ -364,20 +380,24 @@ function POSApplication({
     useRef<HTMLInputElement>(null);
 
 
-  const notify = (message: string) => {
+  function notify(
+    message: string,
+  ) {
     setToast(message);
 
     window.setTimeout(
       () => setToast(""),
       3000,
     );
-  };
+  }
 
 
   async function loadDashboard() {
     try {
       const result =
-        await api("/reports/dashboard");
+        await api(
+          "/reports/dashboard",
+        );
 
       setDashboard(result);
     } catch (error) {
@@ -394,7 +414,7 @@ function POSApplication({
     try {
       const result =
         await api(
-          "/products?limit=500",
+          "/products?page_size=200",
         );
 
       setProducts(
@@ -421,7 +441,8 @@ function POSApplication({
   useEffect(() => {
     if (page === "pos") {
       window.setTimeout(
-        () => barcodeRef.current?.focus(),
+        () =>
+          barcodeRef.current?.focus(),
         100,
       );
     }
@@ -434,7 +455,10 @@ function POSApplication({
         search.trim().toLowerCase();
 
       if (!term) {
-        return products.slice(0, 100);
+        return products.slice(
+          0,
+          100,
+        );
       }
 
       return products
@@ -459,8 +483,12 @@ function POSApplication({
       (sum, item) =>
         sum +
         item.quantity *
-          Number(item.selling_price) -
-        Number(item.discount || 0),
+          Number(
+            item.selling_price,
+          ) -
+        Number(
+          item.discount || 0,
+        ),
       0,
     );
 
@@ -477,10 +505,14 @@ function POSApplication({
   );
 
 
-  function addToCart(product: Product) {
+  function addToCart(
+    product: Product,
+  ) {
     if (
       !product.active ||
-      Number(product.stock_quantity) <= 0
+      Number(
+        product.stock_quantity,
+      ) <= 0
     ) {
       notify(
         "This product is out of stock.",
@@ -493,20 +525,26 @@ function POSApplication({
       const existing =
         current.find(
           (item) =>
-            item.id === product.id,
+            item.id ===
+            product.id,
         );
 
       if (existing) {
-        return current.map((item) =>
-          item.id === product.id
-            ? {
-                ...item,
-                quantity: Math.min(
-                  Number(product.stock_quantity),
-                  item.quantity + 1,
-                ),
-              }
-            : item,
+        return current.map(
+          (item) =>
+            item.id === product.id
+              ? {
+                  ...item,
+                  quantity:
+                    Math.min(
+                      Number(
+                        product.stock_quantity,
+                      ),
+                      item.quantity +
+                        1,
+                    ),
+                }
+              : item,
         );
       }
 
@@ -537,7 +575,9 @@ function POSApplication({
             Math.max(
               0,
               Math.min(
-                Number(item.stock_quantity),
+                Number(
+                  item.stock_quantity,
+                ),
                 amount,
               ),
             );
@@ -548,7 +588,8 @@ function POSApplication({
           };
         })
         .filter(
-          (item) => item.quantity > 0,
+          (item) =>
+            item.quantity > 0,
         ),
     );
   }
@@ -567,15 +608,33 @@ function POSApplication({
     }
 
     try {
-      const result =
+      /*
+       * IMPORTANT:
+       * The backend uses the product
+       * barcode lookup endpoint below.
+       */
+      const lookup =
         await api(
-          `/products/barcode/${encodeURIComponent(
+          `/products/lookup/code/${encodeURIComponent(
             value,
           )}`,
         );
 
+      const productId =
+        lookup.product_id ||
+        lookup.id ||
+        lookup.product?.id;
+
+      if (!productId) {
+        throw new Error(
+          "Product was not found.",
+        );
+      }
+
       const product =
-        result.product || result;
+        await api(
+          `/products/${productId}`,
+        );
 
       addToCart(product);
 
@@ -597,7 +656,6 @@ function POSApplication({
   async function completeSale() {
     if (!cart.length) {
       notify("Cart is empty.");
-
       return;
     }
 
@@ -619,20 +677,26 @@ function POSApplication({
           body: JSON.stringify({
             items: cart.map(
               (item) => ({
-                product_id: item.id,
-                quantity: item.quantity,
+                product_id:
+                  item.id,
+                quantity:
+                  item.quantity,
                 unit_price:
                   item.selling_price,
-                discount: item.discount,
+                discount:
+                  item.discount,
               }),
             ),
-            discount: billDiscount,
+            discount:
+              billDiscount,
             payments: [
               {
-                method: paymentMethod,
+                method:
+                  paymentMethod,
                 amount: total,
                 received_amount:
-                  paymentMethod === "cash"
+                  paymentMethod ===
+                  "cash"
                     ? cashReceived
                     : total,
               },
@@ -650,7 +714,8 @@ function POSApplication({
       notify(
         `Sale completed: ${
           result.receipt_number ||
-          result.receipt?.receipt_number ||
+          result.receipt
+            ?.receipt_number ||
           "receipt created"
         }`,
       );
@@ -715,7 +780,8 @@ function POSApplication({
 
   const current =
     nav.find(
-      (item) => item.id === page,
+      (item) =>
+        item.id === page,
     ) || nav[0];
 
 
@@ -740,7 +806,8 @@ function POSApplication({
 
         <nav className="nav">
           {nav.map((item) => {
-            const Icon = item.icon;
+            const Icon =
+              item.icon;
 
             return (
               <button
@@ -755,6 +822,7 @@ function POSApplication({
                 }
               >
                 <Icon size={17} />
+
                 <span>
                   {item.label}
                 </span>
@@ -785,12 +853,12 @@ function POSApplication({
                   marginRight: 6,
                 }}
               />
+
               Logout
             </button>
           </div>
         </div>
       </aside>
-
 
       <main className="main">
         <header className="topbar">
@@ -808,32 +876,46 @@ function POSApplication({
             {new Date().toLocaleString(
               "en-PK",
               {
-                dateStyle: "medium",
-                timeStyle: "short",
+                dateStyle:
+                  "medium",
+                timeStyle:
+                  "short",
               },
             )}
           </div>
         </header>
 
-
         <div className="content">
-          {page === "dashboard" && (
+          {page ===
+            "dashboard" && (
             <DashboardPage
-              dashboard={dashboard}
+              dashboard={
+                dashboard
+              }
               money={money}
             />
           )}
 
           {page === "pos" && (
             <POSPage
-              products={filteredProducts}
+              products={
+                filteredProducts
+              }
               cart={cart}
               search={search}
-              setSearch={setSearch}
+              setSearch={
+                setSearch
+              }
               barcode={barcode}
-              setBarcode={setBarcode}
-              barcodeRef={barcodeRef}
-              addToCart={addToCart}
+              setBarcode={
+                setBarcode
+              }
+              barcodeRef={
+                barcodeRef
+              }
+              addToCart={
+                addToCart
+              }
               updateQuantity={
                 updateQuantity
               }
@@ -855,25 +937,35 @@ function POSApplication({
               setCashReceived={
                 setCashReceived
               }
-              subtotal={subtotal}
+              subtotal={
+                subtotal
+              }
               total={total}
               change={change}
-              scanBarcode={scanBarcode}
+              scanBarcode={
+                scanBarcode
+              }
               completeSale={
                 completeSale
               }
             />
           )}
 
-          {page === "products" && (
+          {page ===
+            "products" && (
             <ProductsPage
-              products={products}
-              reload={loadProducts}
+              products={
+                products
+              }
+              reload={
+                loadProducts
+              }
               notify={notify}
             />
           )}
 
-          {page === "customers" && (
+          {page ===
+            "customers" && (
             <SimpleDataPage
               title="Customers"
               endpoint="/partners/customers"
@@ -881,7 +973,8 @@ function POSApplication({
             />
           )}
 
-          {page === "suppliers" && (
+          {page ===
+            "suppliers" && (
             <SimpleDataPage
               title="Suppliers"
               endpoint="/partners/suppliers"
@@ -901,21 +994,22 @@ function POSApplication({
             />
           )}
 
-          {page === "reports" && (
+          {page ===
+            "reports" && (
             <ReportsPage
               money={money}
               notify={notify}
             />
           )}
 
-          {page === "settings" && (
+          {page ===
+            "settings" && (
             <SettingsPage
               notify={notify}
             />
           )}
         </div>
       </main>
-
 
       {toast && (
         <div className="toast">
@@ -931,8 +1025,13 @@ function DashboardPage({
   dashboard,
   money,
 }: {
-  dashboard: Dashboard | null;
-  money: (value: any) => string;
+  dashboard:
+    | Dashboard
+    | null;
+
+  money: (
+    value: any,
+  ) => string;
 }) {
   if (!dashboard) {
     return (
@@ -957,7 +1056,10 @@ function DashboardPage({
           </div>
 
           <div className="stat-meta">
-            {dashboard.sales_count} transactions
+            {
+              dashboard.sales_count
+            }{" "}
+            transactions
           </div>
         </div>
 
@@ -973,7 +1075,8 @@ function DashboardPage({
           </div>
 
           <div className="stat-meta">
-            Outstanding today's credit
+            Outstanding today's
+            credit
           </div>
         </div>
 
@@ -999,15 +1102,17 @@ function DashboardPage({
           </div>
 
           <div className="stat-value">
-            {dashboard.low_stock_products}
+            {
+              dashboard.low_stock_products
+            }
           </div>
 
           <div className="stat-meta">
-            Products needing attention
+            Products needing
+            attention
           </div>
         </div>
       </div>
-
 
       <div className="grid grid-2">
         <div className="panel">
@@ -1079,8 +1184,8 @@ function DashboardPage({
                 marginTop: 5,
               }}
             >
-              Barcode scanners work as
-              keyboard input.
+              Barcode scanners work
+              as keyboard input.
             </div>
           </div>
         </div>
@@ -1152,7 +1257,8 @@ function POSPage({
             </div>
 
             <div className="muted">
-              Search or scan a barcode
+              Search or scan a
+              barcode
             </div>
           </div>
         </div>
@@ -1164,7 +1270,9 @@ function POSPage({
         >
           <form
             className="search-row"
-            onSubmit={scanBarcode}
+            onSubmit={
+              scanBarcode
+            }
           >
             <input
               ref={barcodeRef}
@@ -1172,7 +1280,8 @@ function POSPage({
               value={barcode}
               onChange={(event) =>
                 setBarcode(
-                  event.target.value,
+                  event.target
+                    .value,
                 )
               }
               placeholder="Scan barcode and press Enter..."
@@ -1192,34 +1301,66 @@ function POSPage({
               marginTop: 8,
             }}
           >
-            <input
-              className="input"
-              value={search}
-              onChange={(event) =>
-                setSearch(
-                  event.target.value,
-                )
-              }
-              placeholder="Search product name or SKU..."
-            />
+            <div
+              style={{
+                position:
+                  "relative",
+              }}
+            >
+              <Search
+                size={16}
+                style={{
+                  position:
+                    "absolute",
+                  left: 11,
+                  top: 12,
+                  opacity: 0.5,
+                }}
+              />
+
+              <input
+                className="input"
+                style={{
+                  paddingLeft: 36,
+                }}
+                value={search}
+                onChange={(
+                  event,
+                ) =>
+                  setSearch(
+                    event.target
+                      .value,
+                  )
+                }
+                placeholder="Search product name or SKU..."
+              />
+            </div>
           </div>
         </div>
 
         <div className="product-grid">
-          {products.length === 0 && (
+          {products.length ===
+            0 && (
             <div className="empty">
               No products found.
             </div>
           )}
 
           {products.map(
-            (product: Product) => (
+            (
+              product: Product,
+            ) => (
               <button
                 className="product-card"
-                key={product.id}
-                onClick={() =>
-                  addToCart(product)
+                key={
+                  product.id
                 }
+                onClick={() =>
+                  addToCart(
+                    product,
+                  )
+                }
+                type="button"
               >
                 <div className="product-name">
                   {product.name}
@@ -1233,14 +1374,15 @@ function POSPage({
 
                 <div className="product-stock">
                   Stock:{" "}
-                  {product.stock_quantity}
+                  {
+                    product.stock_quantity
+                  }
                 </div>
               </button>
             ),
           )}
         </div>
       </div>
-
 
       <div className="panel cart">
         <div className="panel-header">
@@ -1254,7 +1396,8 @@ function POSPage({
         </div>
 
         <div className="cart-items">
-          {cart.length === 0 && (
+          {cart.length ===
+            0 && (
             <div className="empty">
               <ShoppingCart
                 size={30}
@@ -1270,15 +1413,21 @@ function POSPage({
           )}
 
           {cart.map(
-            (item: CartItem) => (
+            (
+              item: CartItem,
+            ) => (
               <div
                 className="cart-item"
-                key={item.id}
+                key={
+                  item.id
+                }
               >
                 <div className="cart-item-top">
                   <div>
                     <div className="cart-name">
-                      {item.name}
+                      {
+                        item.name
+                      }
                     </div>
 
                     <div className="muted">
@@ -1295,7 +1444,8 @@ function POSPage({
                           item.selling_price,
                         ) -
                         Number(
-                          item.discount || 0,
+                          item.discount ||
+                            0,
                         ),
                     )}
                   </div>
@@ -1304,36 +1454,48 @@ function POSPage({
                 <div className="qty-row">
                   <button
                     className="qty-btn"
+                    type="button"
                     onClick={() =>
                       updateQuantity(
                         item.id,
-                        item.quantity - 1,
+                        item.quantity -
+                          1,
                       )
                     }
                   >
-                    <Minus size={12} />
+                    <Minus
+                      size={12}
+                    />
                   </button>
 
                   <div className="qty">
-                    {item.quantity}
+                    {
+                      item.quantity
+                    }
                   </div>
 
                   <button
                     className="qty-btn"
+                    type="button"
                     onClick={() =>
                       updateQuantity(
                         item.id,
-                        item.quantity + 1,
+                        item.quantity +
+                          1,
                       )
                     }
                   >
-                    <Plus size={12} />
+                    <Plus
+                      size={12}
+                    />
                   </button>
 
                   <button
                     className="qty-btn"
+                    type="button"
                     style={{
-                      marginLeft: "auto",
+                      marginLeft:
+                        "auto",
                     }}
                     onClick={() =>
                       updateQuantity(
@@ -1342,7 +1504,9 @@ function POSPage({
                       )
                     }
                   >
-                    <Trash2 size={12} />
+                    <Trash2
+                      size={12}
+                    />
                   </button>
                 </div>
               </div>
@@ -1350,10 +1514,12 @@ function POSPage({
           )}
         </div>
 
-
         <div className="cart-footer">
           <div className="total-row">
-            <span>Subtotal</span>
+            <span>
+              Subtotal
+            </span>
+
             <strong>
               {money(subtotal)}
             </strong>
@@ -1372,11 +1538,16 @@ function POSPage({
               className="input"
               type="number"
               min="0"
-              value={billDiscount}
-              onChange={(event) =>
+              value={
+                billDiscount
+              }
+              onChange={(
+                event,
+              ) =>
                 setBillDiscount(
                   Number(
-                    event.target.value,
+                    event.target
+                      .value,
                   ) || 0,
                 )
               }
@@ -1384,7 +1555,9 @@ function POSPage({
           </div>
 
           <div className="total-row final">
-            <span>Total</span>
+            <span>
+              Total
+            </span>
 
             <span>
               {money(total)}
@@ -1398,11 +1571,16 @@ function POSPage({
               ["bank", "Bank"],
               ["other", "Other"],
             ].map(
-              ([value, label]) => (
+              ([
+                value,
+                label,
+              ]) => (
                 <button
                   key={value}
+                  type="button"
                   className={
-                    paymentMethod === value
+                    paymentMethod ===
+                    value
                       ? "payment-button active"
                       : "payment-button"
                   }
@@ -1433,11 +1611,16 @@ function POSPage({
                 className="input"
                 type="number"
                 min="0"
-                value={cashReceived}
-                onChange={(event) =>
+                value={
+                  cashReceived
+                }
+                onChange={(
+                  event,
+                ) =>
                   setCashReceived(
                     Number(
-                      event.target.value,
+                      event.target
+                        .value,
                     ) || 0,
                   )
                 }
@@ -1449,7 +1632,10 @@ function POSPage({
                   marginTop: 5,
                 }}
               >
-                <span>Change</span>
+                <span>
+                  Change
+                </span>
+
                 <strong>
                   {money(change)}
                 </strong>
@@ -1459,13 +1645,18 @@ function POSPage({
 
           <button
             className="btn btn-success"
+            type="button"
             style={{
               width: "100%",
               marginTop: 12,
               padding: 13,
             }}
-            disabled={!cart.length}
-            onClick={completeSale}
+            disabled={
+              !cart.length
+            }
+            onClick={
+              completeSale
+            }
           >
             Complete Sale
           </button>
@@ -1483,7 +1674,9 @@ function ProductsPage({
 }: {
   products: Product[];
   reload: () => Promise<void>;
-  notify: (message: string) => void;
+  notify: (
+    message: string,
+  ) => void;
 }) {
   const [showForm, setShowForm] =
     useState(false);
@@ -1503,32 +1696,50 @@ function ProductsPage({
   const [stock, setStock] =
     useState("0");
 
+  const [saving, setSaving] =
+    useState(false);
+
 
   async function createProduct(
     event: FormEvent,
   ) {
     event.preventDefault();
 
+    setSaving(true);
+
     try {
-      await api("/products", {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-          sku: sku || null,
-          unit: "pcs",
-          purchase_price:
-            Number(purchasePrice) || 0,
-          selling_price:
-            Number(sellingPrice) || 0,
-          stock_quantity:
-            Number(stock) || 0,
-        }),
-      });
+      await api(
+        "/products",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            sku:
+              sku || null,
+            unit: "pcs",
+            purchase_price:
+              Number(
+                purchasePrice,
+              ) || 0,
+            selling_price:
+              Number(
+                sellingPrice,
+              ) || 0,
+            stock_quantity:
+              Number(stock) ||
+              0,
+          }),
+        },
+      );
 
       setName("");
       setSku("");
-      setSellingPrice("");
-      setPurchasePrice("");
+      setSellingPrice(
+        "",
+      );
+      setPurchasePrice(
+        "",
+      );
       setStock("0");
       setShowForm(false);
 
@@ -1543,234 +1754,283 @@ function ProductsPage({
           ? error.message
           : "Product creation failed.",
       );
+    } finally {
+      setSaving(false);
     }
   }
 
 
   return (
-    <>
-      <div className="panel">
-        <div className="panel-header">
-          <div>
-            <div className="panel-title">
-              Product Catalog
-            </div>
-
-            <div className="muted">
-              {products.length} products
-            </div>
+    <div className="panel">
+      <div className="panel-header">
+        <div>
+          <div className="panel-title">
+            Product Catalog
           </div>
 
-          <button
-            className="btn btn-primary"
-            onClick={() =>
-              setShowForm(
-                !showForm,
-              )
-            }
-          >
-            <Plus
-              size={14}
-              style={{
-                verticalAlign:
-                  "middle",
-                marginRight: 5,
-              }}
-            />
-            Add Product
-          </button>
+          <div className="muted">
+            {products.length}{" "}
+            products
+          </div>
         </div>
 
-        {showForm && (
-          <form
-            onSubmit={createProduct}
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={() =>
+            setShowForm(
+              !showForm,
+            )
+          }
+        >
+          <Plus
+            size={14}
             style={{
-              padding: 16,
-              borderBottom:
-                "1px solid #27272a",
+              verticalAlign:
+                "middle",
+              marginRight: 5,
             }}
-          >
-            <div className="grid grid-3">
-              <div>
-                <label className="label">
-                  Product Name
-                </label>
+          />
 
-                <input
-                  className="input"
-                  required
-                  value={name}
-                  onChange={(event) =>
-                    setName(
-                      event.target.value,
-                    )
-                  }
-                />
-              </div>
+          Add Product
+        </button>
+      </div>
 
-              <div>
-                <label className="label">
-                  SKU
-                </label>
+      {showForm && (
+        <form
+          onSubmit={
+            createProduct
+          }
+          style={{
+            padding: 16,
+            borderBottom:
+              "1px solid #27272a",
+          }}
+        >
+          <div className="grid grid-3">
+            <div>
+              <label className="label">
+                Product Name
+              </label>
 
-                <input
-                  className="input"
-                  value={sku}
-                  onChange={(event) =>
-                    setSku(
-                      event.target.value,
-                    )
-                  }
-                />
-              </div>
+              <input
+                className="input"
+                required
+                value={name}
+                onChange={(
+                  event,
+                ) =>
+                  setName(
+                    event.target
+                      .value,
+                  )
+                }
+              />
+            </div>
 
-              <div>
-                <label className="label">
-                  Purchase Price
-                </label>
+            <div>
+              <label className="label">
+                SKU
+              </label>
 
-                <input
-                  className="input"
-                  type="number"
-                  min="0"
-                  value={purchasePrice}
-                  onChange={(event) =>
-                    setPurchasePrice(
-                      event.target.value,
-                    )
-                  }
-                />
-              </div>
+              <input
+                className="input"
+                value={sku}
+                onChange={(
+                  event,
+                ) =>
+                  setSku(
+                    event.target
+                      .value,
+                  )
+                }
+              />
+            </div>
 
-              <div>
-                <label className="label">
-                  Selling Price
-                </label>
+            <div>
+              <label className="label">
+                Purchase Price
+              </label>
 
-                <input
-                  className="input"
-                  type="number"
-                  min="0"
-                  required
-                  value={sellingPrice}
-                  onChange={(event) =>
-                    setSellingPrice(
-                      event.target.value,
-                    )
-                  }
-                />
-              </div>
+              <input
+                className="input"
+                type="number"
+                min="0"
+                value={
+                  purchasePrice
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setPurchasePrice(
+                    event.target
+                      .value,
+                  )
+                }
+              />
+            </div>
 
-              <div>
-                <label className="label">
-                  Opening Stock
-                </label>
+            <div>
+              <label className="label">
+                Selling Price
+              </label>
 
-                <input
-                  className="input"
-                  type="number"
-                  min="0"
-                  value={stock}
-                  onChange={(event) =>
-                    setStock(
-                      event.target.value,
-                    )
-                  }
-                />
-              </div>
+              <input
+                className="input"
+                type="number"
+                min="0"
+                required
+                value={
+                  sellingPrice
+                }
+                onChange={(
+                  event,
+                ) =>
+                  setSellingPrice(
+                    event.target
+                      .value,
+                  )
+                }
+              />
+            </div>
 
-              <div
+            <div>
+              <label className="label">
+                Opening Stock
+              </label>
+
+              <input
+                className="input"
+                type="number"
+                min="0"
+                value={stock}
+                onChange={(
+                  event,
+                ) =>
+                  setStock(
+                    event.target
+                      .value,
+                  )
+                }
+              />
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems:
+                  "end",
+              }}
+            >
+              <button
+                className="btn btn-primary"
+                disabled={
+                  saving
+                }
                 style={{
-                  display: "flex",
-                  alignItems:
-                    "end",
+                  width:
+                    "100%",
                 }}
               >
-                <button
-                  className="btn btn-primary"
-                  style={{
-                    width: "100%",
-                  }}
-                >
-                  Save Product
-                </button>
-              </div>
+                {saving
+                  ? "Saving..."
+                  : "Save Product"}
+              </button>
             </div>
-          </form>
-        )}
+          </div>
+        </form>
+      )}
 
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>SKU</th>
-                <th>Purchase</th>
-                <th>Sale</th>
-                <th>Stock</th>
-                <th>Status</th>
-              </tr>
-            </thead>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>
+                Product
+              </th>
 
-            <tbody>
-              {products.map(
-                (product) => (
-                  <tr
-                    key={product.id}
-                  >
-                    <td>
-                      <strong>
-                        {product.name}
-                      </strong>
-                    </td>
+              <th>SKU</th>
 
-                    <td>
-                      {product.sku ||
-                        "—"}
-                    </td>
+              <th>
+                Purchase
+              </th>
 
-                    <td>
-                      {money(
-                        product.purchase_price,
-                      )}
-                    </td>
+              <th>Sale</th>
 
-                    <td>
-                      {money(
-                        product.selling_price,
-                      )}
-                    </td>
+              <th>Stock</th>
 
-                    <td>
-                      {product.stock_quantity}
-                    </td>
+              <th>
+                Status
+              </th>
+            </tr>
+          </thead>
 
-                    <td>
-                      <span
-                        className={
-                          product.stock_quantity <=
-                          product.minimum_stock
-                            ? "badge badge-yellow"
-                            : "badge badge-green"
-                        }
-                      >
-                        {product.stock_quantity <=
-                        0
-                          ? "Out"
-                          : product.stock_quantity <=
-                              product.minimum_stock
-                            ? "Low"
-                            : "OK"}
-                      </span>
-                    </td>
-                  </tr>
-                ),
-              )}
-            </tbody>
-          </table>
-        </div>
+          <tbody>
+            {products.map(
+              (
+                product,
+              ) => (
+                <tr
+                  key={
+                    product.id
+                  }
+                >
+                  <td>
+                    <strong>
+                      {
+                        product.name
+                      }
+                    </strong>
+                  </td>
+
+                  <td>
+                    {product.sku ||
+                      "—"}
+                  </td>
+
+                  <td>
+                    {money(
+                      product.purchase_price,
+                    )}
+                  </td>
+
+                  <td>
+                    {money(
+                      product.selling_price,
+                    )}
+                  </td>
+
+                  <td>
+                    {
+                      product.stock_quantity
+                    }
+                  </td>
+
+                  <td>
+                    <span
+                      className={
+                        product.stock_quantity <=
+                        product.minimum_stock
+                          ? "badge badge-yellow"
+                          : "badge badge-green"
+                      }
+                    >
+                      {product.stock_quantity <=
+                      0
+                        ? "Out"
+                        : product.stock_quantity <=
+                            product.minimum_stock
+                          ? "Low"
+                          : "OK"}
+                    </span>
+                  </td>
+                </tr>
+              ),
+            )}
+          </tbody>
+        </table>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -1782,7 +2042,9 @@ function SimpleDataPage({
 }: {
   title: string;
   endpoint: string;
-  notify: (message: string) => void;
+  notify: (
+    message: string,
+  ) => void;
 }) {
   const [items, setItems] =
     useState<any[]>([]);
@@ -1799,9 +2061,12 @@ function SimpleDataPage({
         await api(endpoint);
 
       setItems(
-        Array.isArray(result)
+        Array.isArray(
+          result,
+        )
           ? result
-          : result.items || [],
+          : result.items ||
+              [],
       );
     } catch (error) {
       notify(
@@ -1829,13 +2094,15 @@ function SimpleDataPage({
           </div>
 
           <div className="muted">
-            Partner management and
-            account records
+            Partner management
+            and account
+            records
           </div>
         </div>
 
         <button
           className="btn"
+          type="button"
           onClick={load}
         >
           Refresh
@@ -1846,7 +2113,8 @@ function SimpleDataPage({
         <div className="empty">
           Loading...
         </div>
-      ) : items.length === 0 ? (
+      ) : items.length ===
+        0 ? (
         <div className="empty">
           No records found.
         </div>
@@ -1858,7 +2126,9 @@ function SimpleDataPage({
                 <th>Name</th>
                 <th>Phone</th>
                 <th>Email</th>
-                <th>Status</th>
+                <th>
+                  Status
+                </th>
               </tr>
             </thead>
 
@@ -1866,11 +2136,15 @@ function SimpleDataPage({
               {items.map(
                 (item) => (
                   <tr
-                    key={item.id}
+                    key={
+                      item.id
+                    }
                   >
                     <td>
                       <strong>
-                        {item.name}
+                        {
+                          item.name
+                        }
                       </strong>
                     </td>
 
@@ -1912,7 +2186,9 @@ function SimpleDataPage({
 function StockPage({
   notify,
 }: {
-  notify: (message: string) => void;
+  notify: (
+    message: string,
+  ) => void;
 }) {
   const [data, setData] =
     useState<any>(null);
@@ -1958,13 +2234,15 @@ function StockPage({
           </div>
 
           <div className="muted">
-            Stock health and low-stock
+            Stock health and
+            low-stock
             monitoring
           </div>
         </div>
 
         <button
           className="btn"
+          type="button"
           onClick={load}
         >
           Refresh
@@ -1978,7 +2256,9 @@ function StockPage({
           </div>
 
           <div className="stat-value">
-            {data.total_products}
+            {
+              data.total_products
+            }
           </div>
         </div>
 
@@ -1988,7 +2268,9 @@ function StockPage({
           </div>
 
           <div className="stat-value">
-            {data.active_products}
+            {
+              data.active_products
+            }
           </div>
         </div>
 
@@ -1998,7 +2280,9 @@ function StockPage({
           </div>
 
           <div className="stat-value">
-            {data.low_stock_products}
+            {
+              data.low_stock_products
+            }
           </div>
         </div>
 
@@ -2008,7 +2292,9 @@ function StockPage({
           </div>
 
           <div className="stat-value">
-            {data.out_of_stock_products}
+            {
+              data.out_of_stock_products
+            }
           </div>
         </div>
       </div>
@@ -2017,17 +2303,25 @@ function StockPage({
         <table className="table">
           <thead>
             <tr>
-              <th>Product</th>
+              <th>
+                Product
+              </th>
               <th>SKU</th>
               <th>Stock</th>
-              <th>Minimum</th>
-              <th>Sale Price</th>
-              <th>Status</th>
+              <th>
+                Minimum
+              </th>
+              <th>
+                Sale Price
+              </th>
+              <th>
+                Status
+              </th>
             </tr>
           </thead>
 
           <tbody>
-            {data.items.map(
+            {data.items?.map(
               (item: any) => (
                 <tr
                   key={
@@ -2035,7 +2329,9 @@ function StockPage({
                   }
                 >
                   <td>
-                    {item.product_name}
+                    {
+                      item.product_name
+                    }
                   </td>
 
                   <td>
@@ -2044,11 +2340,15 @@ function StockPage({
                   </td>
 
                   <td>
-                    {item.stock_quantity}
+                    {
+                      item.stock_quantity
+                    }
                   </td>
 
                   <td>
-                    {item.minimum_stock}
+                    {
+                      item.minimum_stock
+                    }
                   </td>
 
                   <td>
@@ -2084,7 +2384,9 @@ function StockPage({
 function CashRegisterPage({
   notify,
 }: {
-  notify: (message: string) => void;
+  notify: (
+    message: string,
+  ) => void;
 }) {
   const [register, setRegister] =
     useState<any>(null);
@@ -2098,16 +2400,23 @@ function CashRegisterPage({
 
   async function load() {
     try {
-      setRegister(
+      const result =
         await api(
           "/inventory/cash-register/current",
-        ),
+        );
+
+      setRegister(
+        result,
       );
     } catch (error) {
       notify(
         error instanceof Error
           ? error.message
           : "Could not load register.",
+      );
+
+      setRegister(
+        null,
       );
     }
   }
@@ -2126,7 +2435,8 @@ function CashRegisterPage({
           method: "POST",
           body: JSON.stringify({
             opening_balance:
-              Number(amount) || 0,
+              Number(amount) ||
+              0,
           }),
         },
       );
@@ -2154,7 +2464,9 @@ function CashRegisterPage({
           method: "POST",
           body: JSON.stringify({
             actual_closing_balance:
-              Number(closing) || 0,
+              Number(
+                closing,
+              ) || 0,
           }),
         },
       );
@@ -2214,24 +2526,33 @@ function CashRegisterPage({
               }}
             >
               <label className="label">
-                Actual Closing Cash
+                Actual Closing
+                Cash
               </label>
 
               <input
                 className="input"
                 type="number"
-                value={closing}
-                onChange={(event) =>
+                min="0"
+                value={
+                  closing
+                }
+                onChange={(
+                  event,
+                ) =>
                   setClosing(
-                    event.target.value,
+                    event.target
+                      .value,
                   )
                 }
               />
 
               <button
                 className="btn btn-danger"
+                type="button"
                 style={{
-                  width: "100%",
+                  width:
+                    "100%",
                   marginTop: 10,
                 }}
                 onClick={
@@ -2249,8 +2570,8 @@ function CashRegisterPage({
             }}
           >
             <div className="muted">
-              No register is currently
-              open.
+              No register is
+              currently open.
             </div>
 
             <label
@@ -2265,21 +2586,29 @@ function CashRegisterPage({
             <input
               className="input"
               type="number"
+              min="0"
               value={amount}
-              onChange={(event) =>
+              onChange={(
+                event,
+              ) =>
                 setAmount(
-                  event.target.value,
+                  event.target
+                    .value,
                 )
               }
             />
 
             <button
               className="btn btn-success"
+              type="button"
               style={{
-                width: "100%",
+                width:
+                  "100%",
                 marginTop: 10,
               }}
-              onClick={openRegister}
+              onClick={
+                openRegister
+              }
             >
               Open Register
             </button>
@@ -2290,14 +2619,37 @@ function CashRegisterPage({
       <div className="panel">
         <div className="panel-header">
           <div className="panel-title">
-            Register Controls
+            Register
+            Information
           </div>
         </div>
 
         <div className="empty">
-          Cash in / cash out operations
-          are available through the
-          inventory cash API.
+          <WalletCards
+            size={30}
+            style={{
+              marginBottom: 8,
+            }}
+          />
+
+          <div>
+            Use the register
+            at the beginning
+            and end of each
+            business day.
+          </div>
+
+          <div
+            className="muted"
+            style={{
+              marginTop: 5,
+            }}
+          >
+            Opening and closing
+            balances are
+            recorded by the
+            POS.
+          </div>
         </div>
       </div>
     </div>
@@ -2309,8 +2661,13 @@ function ReportsPage({
   money,
   notify,
 }: {
-  money: (value: any) => string;
-  notify: (message: string) => void;
+  money: (
+    value: any,
+  ) => string;
+
+  notify: (
+    message: string,
+  ) => void;
 }) {
   const [report, setReport] =
     useState<any>(null);
@@ -2325,12 +2682,18 @@ function ReportsPage({
         sales,
         profitData,
       ] = await Promise.all([
-        api("/reports/sales"),
-        api("/reports/profit"),
+        api(
+          "/reports/sales",
+        ),
+        api(
+          "/reports/profit",
+        ),
       ]);
 
       setReport(sales);
-      setProfit(profitData);
+      setProfit(
+        profitData,
+      );
     } catch (error) {
       notify(
         error instanceof Error
@@ -2356,7 +2719,8 @@ function ReportsPage({
 
           <div className="stat-value">
             {money(
-              report?.summary?.total,
+              report?.summary
+                ?.total,
             )}
           </div>
         </div>
@@ -2398,7 +2762,6 @@ function ReportsPage({
         </div>
       </div>
 
-
       <div className="panel">
         <div className="panel-header">
           <div>
@@ -2413,6 +2776,7 @@ function ReportsPage({
 
           <button
             className="btn"
+            type="button"
             onClick={load}
           >
             Refresh
@@ -2424,7 +2788,9 @@ function ReportsPage({
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Transactions</th>
+                <th>
+                  Transactions
+                </th>
                 <th>Total</th>
               </tr>
             </thead>
@@ -2433,14 +2799,18 @@ function ReportsPage({
               {report?.daily?.map(
                 (row: any) => (
                   <tr
-                    key={row.date}
+                    key={
+                      row.date
+                    }
                   >
                     <td>
                       {row.date}
                     </td>
 
                     <td>
-                      {row.count}
+                      {
+                        row.count
+                      }
                     </td>
 
                     <td>
@@ -2463,13 +2833,21 @@ function ReportsPage({
 function SettingsPage({
   notify,
 }: {
-  notify: (message: string) => void;
+  notify: (
+    message: string,
+  ) => void;
 }) {
   const [shop, setShop] =
     useState<any>(null);
 
   const [name, setName] =
     useState("");
+
+  const [receiptWidth, setReceiptWidth] =
+    useState(80);
+
+  const [logoLoading, setLogoLoading] =
+    useState(false);
 
 
   async function load() {
@@ -2478,8 +2856,14 @@ function SettingsPage({
         await api("/shop");
 
       setShop(result);
+
       setName(
         result.name || "",
+      );
+
+      setReceiptWidth(
+        result.receipt_width ||
+          80,
       );
     } catch (error) {
       notify(
@@ -2498,12 +2882,17 @@ function SettingsPage({
 
   async function save() {
     try {
-      await api("/shop", {
-        method: "PATCH",
-        body: JSON.stringify({
-          name,
-        }),
-      });
+      await api(
+        "/shop",
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            name,
+            receipt_width:
+              receiptWidth,
+          }),
+        },
+      );
 
       notify(
         "Shop settings saved.",
@@ -2515,6 +2904,102 @@ function SettingsPage({
         error instanceof Error
           ? error.message
           : "Could not save settings.",
+      );
+    }
+  }
+
+
+  async function uploadLogo(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const file =
+      event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setLogoLoading(true);
+
+    try {
+      const token =
+        localStorage.getItem(
+          "pos_token",
+        );
+
+      const formData =
+        new FormData();
+
+      formData.append(
+        "file",
+        file,
+      );
+
+      const response =
+        await fetch(
+          `${API}/shop/logo`,
+          {
+            method: "POST",
+            headers: token
+              ? {
+                  Authorization:
+                    `Bearer ${token}`,
+                }
+              : {},
+            body: formData,
+          },
+        );
+
+      const body =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          body.detail ||
+            "Logo upload failed.",
+        );
+      }
+
+      setShop(body);
+
+      notify(
+        "Shop logo uploaded.",
+      );
+    } catch (error) {
+      notify(
+        error instanceof Error
+          ? error.message
+          : "Logo upload failed.",
+      );
+    } finally {
+      setLogoLoading(false);
+
+      event.target.value =
+        "";
+    }
+  }
+
+
+  async function removeLogo() {
+    try {
+      const result =
+        await api(
+          "/shop/logo",
+          {
+            method: "DELETE",
+          },
+        );
+
+      setShop(result);
+
+      notify(
+        "Shop logo removed.",
+      );
+    } catch (error) {
+      notify(
+        error instanceof Error
+          ? error.message
+          : "Could not remove logo.",
       );
     }
   }
@@ -2542,16 +3027,51 @@ function SettingsPage({
             <input
               className="input"
               value={name}
-              onChange={(event) =>
+              onChange={(
+                event,
+              ) =>
                 setName(
-                  event.target.value,
+                  event.target
+                    .value,
                 )
               }
             />
           </div>
 
+          <div className="form-group">
+            <label className="label">
+              Receipt Width
+            </label>
+
+            <select
+              className="input"
+              value={
+                receiptWidth
+              }
+              onChange={(
+                event,
+              ) =>
+                setReceiptWidth(
+                  Number(
+                    event.target
+                      .value,
+                  ),
+                )
+              }
+            >
+              <option value={58}>
+                58mm
+              </option>
+
+              <option value={80}>
+                80mm
+              </option>
+            </select>
+          </div>
+
           <button
             className="btn btn-primary"
+            type="button"
             onClick={save}
           >
             Save Settings
@@ -2562,31 +3082,103 @@ function SettingsPage({
       <div className="panel">
         <div className="panel-header">
           <div className="panel-title">
-            Receipt Settings
+            Shop Logo
           </div>
         </div>
 
-        <div className="empty">
-          <Printer
-            size={30}
-            style={{
-              marginBottom: 8,
-            }}
+        <div
+          style={{
+            padding: 18,
+          }}
+        >
+          {shop?.has_logo && (
+            <div
+              style={{
+                marginBottom: 15,
+              }}
+            >
+              <img
+                src={`${API}/shop/logo`}
+                alt="Shop logo"
+                style={{
+                  maxWidth: 180,
+                  maxHeight: 100,
+                  objectFit:
+                    "contain",
+                  borderRadius: 8,
+                }}
+              />
+            </div>
+          )}
+
+          <input
+            className="input"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={
+              uploadLogo
+            }
+            disabled={
+              logoLoading
+            }
           />
 
-          <div>
-            Thermal receipt printing is
-            supported.
-          </div>
+          {shop?.has_logo && (
+            <button
+              className="btn btn-danger"
+              type="button"
+              style={{
+                marginTop: 10,
+              }}
+              onClick={
+                removeLogo
+              }
+            >
+              Remove Logo
+            </button>
+          )}
 
           <div
             className="muted"
             style={{
-              marginTop: 5,
+              marginTop: 10,
             }}
           >
-            58mm and 80mm receipt layouts
-            are available from the backend.
+            PNG, JPEG and WEBP
+            logos are supported.
+          </div>
+
+          <div
+            style={{
+              marginTop: 20,
+              paddingTop: 18,
+              borderTop:
+                "1px solid #27272a",
+            }}
+          >
+            <Printer
+              size={30}
+              style={{
+                marginBottom: 8,
+              }}
+            />
+
+            <div>
+              Thermal receipt
+              printing is
+              supported.
+            </div>
+
+            <div
+              className="muted"
+              style={{
+                marginTop: 5,
+              }}
+            >
+              Configure 58mm or
+              80mm receipt width
+              above.
+            </div>
           </div>
         </div>
       </div>
