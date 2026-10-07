@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, status
 
-from app.dependencies import DbSession, get_current_user
-from app.models.user import User
+from app.dependencies import CurrentUser, DbSession
 from app.permissions import Permission
 from app.schemas.sale import (
     SaleCalculationRequest,
@@ -24,7 +22,10 @@ from app.services.sales import (
 )
 
 
-router = APIRouter(prefix="/sales", tags=["Sales"])
+router = APIRouter(
+    prefix="/sales",
+    tags=["Sales"],
+)
 
 
 def serialize_sale(sale) -> SaleResponse:
@@ -51,10 +52,13 @@ def serialize_sale(sale) -> SaleResponse:
 )
 async def calculate(
     payload: SaleCalculationRequest,
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.SALES)
+    db: DbSession,
+    current_user: CurrentUser,
+) -> SaleCalculationResponse:
+    require_permission(
+        current_user,
+        Permission.CREATE_SALE,
+    )
 
     subtotal, discount, total = await calculate_sale(
         db,
@@ -72,14 +76,17 @@ async def calculate(
 @router.post(
     "",
     response_model=SaleResponse,
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
 )
 async def create(
     payload: SaleCreate,
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.SALES)
+    db: DbSession,
+    current_user: CurrentUser,
+) -> SaleResponse:
+    require_permission(
+        current_user,
+        Permission.CREATE_SALE,
+    )
 
     sale = await create_sale(
         db,
@@ -98,10 +105,19 @@ async def create(
 async def list_all(
     page: int = 1,
     page_size: int = 50,
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.SALES)
+    db: DbSession = None,
+    current_user: CurrentUser = None,
+) -> SaleListResponse:
+    if db is None or current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Sale dependencies were not initialized.",
+        )
+
+    require_permission(
+        current_user,
+        Permission.VIEW_SALES,
+    )
 
     sales, total = await list_sales(
         db,
@@ -111,7 +127,10 @@ async def list_all(
     )
 
     return SaleListResponse(
-        items=[serialize_sale(sale) for sale in sales],
+        items=[
+            serialize_sale(sale)
+            for sale in sales
+        ],
         total=total,
         page=page,
         page_size=page_size,
@@ -124,10 +143,13 @@ async def list_all(
 )
 async def get(
     sale_id: UUID,
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.SALES)
+    db: DbSession,
+    current_user: CurrentUser,
+) -> SaleResponse:
+    require_permission(
+        current_user,
+        Permission.VIEW_SALES,
+    )
 
     sale = await get_sale(
         db,
