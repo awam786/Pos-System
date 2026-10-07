@@ -3,191 +3,68 @@ from __future__ import annotations
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import UUID
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import (
-    CashMovement,
-    Customer,
-    Payment,
-    Product,
-    Sale,
-    SaleItem,
-    StockMovement,
-)
-from app.models.enums import CashMovementType, PaymentStatus, SaleStatus, StockMovementType
+from app.models.enums import CashMovementType, SaleStatus, StockMovementType
+from app.models.inventory import CashMovement, CashRegister, StockMovement
+from app.models.partner import Customer
+from app.models.product import Product, ProductCode
+from app.models.transaction import Payment, Sale, SaleItem
 from app.schemas.sale import (
     SaleCalculationRequest,
-    SaleCalculationResponse,
     SaleCreate,
-    SaleItemResponse,
 )
-from app.services.inventory import get_open_cash_register
 
 
-MONEY = Decimal("0.01")
-QTY = Decimal("0.000001")
+CENT = Decimal("0.01")
+QTY = Decimal("0.001")
 
 
 def money(value: Decimal | int | float | None) -> Decimal:
-    if value is None:
-        return Decimal("0.00")
-
-    return Decimal(str(value)).quantize(MONEY, rounding=ROUND_HALF_UP)
+    return Decimal(str(value or 0)).quantize(
+        CENT,
+        rounding=ROUND_HALF_UP,
+    )
 
 
 def quantity(value: Decimal | int | float) -> Decimal:
-    return Decimal(str(value)).quantize(QTY, rounding=ROUND_HALF_UP)
-
-
-def calculate_discount(
-    amount: Decimal,
-    discount_type: str,
-    discount_value: Decimal,
-) -> Decimal:
-    amount = money(amount)
-    discount_value = money(discount_value)
-
-    if discount_type == "none":
-        return Decimal("0.00")
-
-    if discount_type == "fixed":
-        return min(amount, discount_value)
-
-    if discount_type == "percentage":
-        if discount_value > Decimal("100"):
-            raise HTTPException(
-                status_code=400,
-                detail="Percentage discount cannot exceed 100%.",
-            )
-
-        return money(amount * discount_value / Decimal("100"))
-
-    raise HTTPException(status_code=400, detail="Invalid discount type.")
-
-
-def calculate_line(
-    product: Product,
-    item,
-) -> tuple[Decimal, Decimal, Decimal]:
-    unit_price = (
-        money(item.unit_price)
-        if item.unit_price is not None
-        else money(product.selling_price)
+    return Decimal(str(value)).quantize(
+        QTY,
+        rounding=ROUND_HALF_UP,
     )
 
-    if unit_price < 0:
-        raise HTTPException(status_code=400, detail="Invalid product price.")
 
-    qty = quantity(item.quantity)
-    gross = money(unit_price * qty)
-
-    discount = calculate_discount(
-        gross,
-        item.discount_type,
-        item.discount_value,
-    )
-
-    line_total = money(gross - discount)
-
-    return unit_price, discount, line_total
-
-
-async def load_products(
+async def get_product(
     db: AsyncSession,
     shop_id: UUID,
-    product_ids: list[UUID],
-) -> dict[UUID, Product]:
-    result = await db.execute(
+    product_id: UUID,
+) -> Product:
+    product = await db.scalar(
         select(Product).where(
+            Product.id == product_id,
             Product.shop_id == shop_id,
-            Product.id.in_(product_ids),
         )
     )
 
-    products = {product.id: product for product in result.scalars().all()}
-
-    if len(products) != len(set(product_ids)):
+    if not product:
         raise HTTPException(
-            status_code=400,
-            detail="One or more products were not found.",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found.",
         )
 
-    return products
-
-
-async def calculate_sale(
-    db: AsyncSession,
-    shop_id: UUID,
-    request: SaleCalculationRequest,
-) -> SaleCalculationResponse:
-    products = await load_products(
-        db,
-        shop_id,
-        [item.product_id for item in request.items],
-    )
-
-    response_items: list[SaleItemResponse] = []
-    subtotal = Decimal("0.00")
-    item_discount_total = Decimal("0.00")
-
-    for item in request.items:
-        product = products[item.product_id]
-
-        if not product.active:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Product '{product.name}' is inactive.",
-            )
-
-        unit_price, discount, line_total = calculate_line(product, item)
-
-        subtotal += money(unit_price * quantity(item.quantity))
-        item_discount_total += discount
-
-        response_items.append(
-            SaleItemResponse(
-                id=UUID(int=0),
-                product_id=product.id,
-                product_name=product.name,
-                sku=product.sku,
-                quantity=quantity(item.quantity),
-                unit_price=unit_price,
-                discount_type=item.discount_type,
-                discount_value=money(item.discount_value),
-                discount_amount=discount,
-                line_total=line_total,
-            )
+    if not product.active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Product '{product.name}' is archived.",
         )
 
-    subtotal = money(subtotal)
-
-    bill_discount = calculate_discount(
-        subtotal - item_discount_total,
-        request.bill_discount_type,
-        request.bill_discount_value,
-    )
-
-    grand_total = money(
-        subtotal - item_discount_total - bill_discount
-    )
-
-    return SaleCalculationResponse(
-        subtotal=subtotal,
-        item_discount=item_discount_total,
-        bill_discount=bill_discount,
-        grand_total=grand_total,
-        paid_amount=Decimal("0.00"),
-        outstanding_amount=grand_total,
-        change_amount=Decimal("0.00"),
-        payment_status="unpaid",
-        items=response_items,
-    )
+    return product
 
 
-async def next_invoice_number(
+async def next_receipt_number(
     db: AsyncSession,
     shop_id: UUID,
 ) -> str:
@@ -197,236 +74,341 @@ async def next_invoice_number(
         )
     )
 
-    count = result.scalar_one() or 0
+    count = int(result.scalar() or 0)
 
     return f"INV-{count + 1:08d}"
 
 
-def determine_payment_status(
-    total: Decimal,
-    paid: Decimal,
-) -> str:
-    total = money(total)
-    paid = money(paid)
+async def calculate_sale(
+    db: AsyncSession,
+    shop_id: UUID,
+    payload: SaleCalculationRequest,
+) -> tuple[Decimal, Decimal, Decimal]:
+    subtotal = Decimal("0.00")
+    item_discounts = Decimal("0.00")
 
-    if paid >= total:
-        return PaymentStatus.PAID
+    for item in payload.items:
+        product = await get_product(
+            db,
+            shop_id,
+            item.product_id,
+        )
 
-    if paid > 0:
-        return PaymentStatus.PARTIAL
+        unit_price = (
+            money(item.unit_price)
+            if item.unit_price is not None
+            else money(product.selling_price)
+        )
 
-    return PaymentStatus.UNPAID
+        qty = quantity(item.quantity)
+        discount = money(item.discount)
+
+        line_subtotal = money(unit_price * qty)
+
+        if discount > line_subtotal:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Discount exceeds line total for {product.name}.",
+            )
+
+        subtotal += line_subtotal
+        item_discounts += discount
+
+    bill_discount = money(payload.discount)
+    available = money(subtotal - item_discounts)
+
+    if bill_discount > available:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Bill discount exceeds the sale amount.",
+        )
+
+    total_discount = money(item_discounts + bill_discount)
+    total = money(subtotal - total_discount)
+
+    return money(subtotal), total_discount, total
 
 
 async def create_sale(
     db: AsyncSession,
     shop_id: UUID,
     user_id: UUID,
-    request: SaleCreate,
+    payload: SaleCreate,
 ) -> Sale:
-    if not request.items:
+    if not payload.items:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="A sale must contain at least one item.",
         )
 
-    product_ids = [item.product_id for item in request.items]
-    products = await load_products(db, shop_id, product_ids)
-
     customer = None
 
-    if request.customer_id:
+    if payload.customer_id:
         customer = await db.scalar(
             select(Customer).where(
-                Customer.id == request.customer_id,
+                Customer.id == payload.customer_id,
                 Customer.shop_id == shop_id,
+                Customer.active.is_(True),
             )
         )
 
         if not customer:
             raise HTTPException(
-                status_code=404,
+                status_code=status.HTTP_404_NOT_FOUND,
                 detail="Customer not found.",
             )
 
-    calculated_items = []
-
     subtotal = Decimal("0.00")
     item_discount_total = Decimal("0.00")
+    prepared_items = []
 
-    for item in request.items:
-        product = products[item.product_id]
+    for requested in payload.items:
+        product = await get_product(
+            db,
+            shop_id,
+            requested.product_id,
+        )
 
-        if not product.active:
+        qty = quantity(requested.quantity)
+
+        if product.stock_quantity < qty:
             raise HTTPException(
-                status_code=400,
-                detail=f"Product '{product.name}' is inactive.",
-            )
-
-        requested_quantity = quantity(item.quantity)
-
-        if requested_quantity > quantity(product.current_stock):
-            raise HTTPException(
-                status_code=400,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
-                    f"Insufficient stock for '{product.name}'. "
-                    f"Available: {product.current_stock}."
+                    f"Insufficient stock for {product.name}. "
+                    f"Available: {product.stock_quantity}."
                 ),
             )
 
-        unit_price, discount, line_total = calculate_line(
-            product,
-            item,
+        unit_price = (
+            money(requested.unit_price)
+            if requested.unit_price is not None
+            else money(product.selling_price)
         )
 
-        subtotal += money(unit_price * requested_quantity)
-        item_discount_total += discount
+        line_discount = money(requested.discount)
+        line_subtotal = money(unit_price * qty)
 
-        calculated_items.append(
+        if line_discount > line_subtotal:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Discount exceeds line total for {product.name}.",
+            )
+
+        line_total = money(line_subtotal - line_discount)
+
+        subtotal += line_subtotal
+        item_discount_total += line_discount
+
+        prepared_items.append(
             (
-                item,
                 product,
-                requested_quantity,
+                qty,
                 unit_price,
-                discount,
+                line_discount,
                 line_total,
             )
         )
 
-    subtotal = money(subtotal)
-
-    bill_discount = calculate_discount(
-        subtotal - item_discount_total,
-        request.bill_discount_type,
-        request.bill_discount_value,
+    bill_discount = money(payload.discount)
+    amount_before_bill_discount = money(
+        subtotal - item_discount_total
     )
 
-    grand_total = money(
-        subtotal - item_discount_total - bill_discount
-    )
-
-    supplied_payment_total = money(
-        sum(
-            (money(payment.amount) for payment in request.payments),
-            Decimal("0.00"),
-        )
-    )
-
-    cash_received = money(request.cash_received)
-
-    has_cash_payment = any(
-        payment.method == "cash"
-        for payment in request.payments
-    )
-
-    if has_cash_payment and request.cash_received is not None:
-        if cash_received <= 0:
-            raise HTTPException(
-                status_code=400,
-                detail="Cash received must be greater than zero.",
-            )
-
-        if cash_received < supplied_payment_total:
-            raise HTTPException(
-                status_code=400,
-                detail="Cash received cannot be less than the cash payment.",
-            )
-
-    if supplied_payment_total > grand_total:
+    if bill_discount > amount_before_bill_discount:
         raise HTTPException(
-            status_code=400,
-            detail="Payment total cannot exceed the sale total.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Bill discount exceeds the remaining sale amount.",
         )
 
-    outstanding = money(grand_total - supplied_payment_total)
+    total_discount = money(
+        item_discount_total + bill_discount
+    )
 
-    if outstanding > 0 and customer is None:
+    total = money(subtotal - total_discount)
+
+    payment_total = Decimal("0.00")
+    cash_received_total = Decimal("0.00")
+    cash_change_total = Decimal("0.00")
+
+    for payment in payload.payments:
+        amount = money(payment.amount)
+
+        if payment.method == "cash":
+            received = money(
+                payment.received_amount
+                if payment.received_amount is not None
+                else amount
+            )
+
+            if received < amount:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cash received cannot be less than the payment amount.",
+                )
+
+            change = money(received - amount)
+
+            cash_received_total += received
+            cash_change_total += change
+
+        payment_total += amount
+
+    if payment_total > total:
         raise HTTPException(
-            status_code=400,
-            detail=(
-                "Customer is required when the sale is not fully paid."
-            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Payment amount cannot exceed the sale total.",
+        )
+
+    credit_amount = money(total - payment_total)
+
+    if credit_amount > 0 and not customer:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A customer is required for credit sales.",
         )
 
     if customer and customer.credit_limit > 0:
-        if outstanding > money(customer.credit_limit):
-            raise HTTPException(
-                status_code=400,
-                detail="Customer credit limit would be exceeded.",
-            )
-
-    change_amount = Decimal("0.00")
-
-    if has_cash_payment and request.cash_received is not None:
-        cash_payment_amount = money(
-            sum(
-                (
-                    money(payment.amount)
-                    for payment in request.payments
-                    if payment.method == "cash"
-                ),
-                Decimal("0.00"),
+        existing_balance_result = await db.execute(
+            select(
+                func.coalesce(
+                    func.sum(Sale.credit_amount),
+                    Decimal("0.00"),
+                )
+            ).where(
+                Sale.shop_id == shop_id,
+                Sale.customer_id == customer.id,
             )
         )
 
-        if cash_received > cash_payment_amount:
-            change_amount = money(
-                cash_received - cash_payment_amount
+        existing_credit = money(
+            existing_balance_result.scalar() or 0
+        )
+
+        payment_result = await db.execute(
+            select(
+                func.coalesce(
+                    func.sum(
+                        db.bindparam("zero")
+                        if False
+                        else Customer.id
+                    ),
+                    0,
+                )
+            ).where(Customer.id == customer.id)
+        )
+
+        del payment_result
+
+        from app.models.partner import CustomerPayment
+
+        paid_result = await db.execute(
+            select(
+                func.coalesce(
+                    func.sum(CustomerPayment.amount),
+                    Decimal("0.00"),
+                )
+            ).where(
+                CustomerPayment.shop_id == shop_id,
+                CustomerPayment.customer_id == customer.id,
+            )
+        )
+
+        existing_payments = money(
+            paid_result.scalar() or 0
+        )
+
+        existing_balance = max(
+            existing_credit
+            + money(customer.opening_balance)
+            - existing_payments,
+            Decimal("0.00"),
+        )
+
+        if existing_balance + credit_amount > customer.credit_limit:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Customer credit limit would be exceeded.",
             )
 
-    invoice_number = await next_invoice_number(db, shop_id)
+    cash_register = None
+
+    if any(payment.method == "cash" for payment in payload.payments):
+        cash_register = await db.scalar(
+            select(CashRegister)
+            .where(
+                CashRegister.shop_id == shop_id,
+                CashRegister.is_open.is_(True),
+            )
+            .order_by(CashRegister.created_at.desc())
+            .limit(1)
+        )
+
+        if not cash_register:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Open a cash register before accepting cash.",
+            )
+
+    receipt_number = await next_receipt_number(
+        db,
+        shop_id,
+    )
 
     sale = Sale(
         shop_id=shop_id,
-        customer_id=request.customer_id,
+        customer_id=customer.id if customer else None,
         user_id=user_id,
-        invoice_number=invoice_number,
-        subtotal=subtotal,
-        discount_type=request.bill_discount_type,
-        discount_value=money(request.bill_discount_value),
-        discount_amount=money(
-            item_discount_total + bill_discount
+        cash_register_id=(
+            cash_register.id if cash_register else None
         ),
-        grand_total=grand_total,
-        paid_amount=supplied_payment_total,
-        change_amount=change_amount,
-        payment_status=determine_payment_status(
-            grand_total,
-            supplied_payment_total,
-        ),
-        status=SaleStatus.COMPLETED,
-        notes=request.notes,
+        receipt_number=receipt_number,
+        status=SaleStatus.COMPLETED.value,
+        subtotal=money(subtotal),
+        discount=total_discount,
+        total=total,
+        paid_amount=payment_total,
+        credit_amount=credit_amount,
+        notes=payload.notes.strip()
+        if payload.notes
+        else None,
     )
 
     db.add(sale)
     await db.flush()
 
     for (
-        item,
         product,
-        requested_quantity,
+        qty,
         unit_price,
-        discount,
+        line_discount,
         line_total,
-    ) in calculated_items:
-        sale_item = SaleItem(
-            sale_id=sale.id,
-            product_id=product.id,
-            product_name=product.name,
-            sku=product.sku,
-            quantity=requested_quantity,
-            unit_price=unit_price,
-            discount_type=item.discount_type,
-            discount_value=money(item.discount_value),
-            discount_amount=discount,
-            line_total=line_total,
+    ) in prepared_items:
+        product.stock_quantity -= qty
+
+        code_result = await db.execute(
+            select(ProductCode.code)
+            .where(
+                ProductCode.product_id == product.id,
+                ProductCode.shop_id == shop_id,
+            )
+            .order_by(ProductCode.created_at.asc())
+            .limit(1)
         )
 
-        db.add(sale_item)
+        product_code = code_result.scalar_one_or_none()
 
-        product.current_stock = (
-            quantity(product.current_stock)
-            - requested_quantity
+        db.add(
+            SaleItem(
+                sale_id=sale.id,
+                product_id=product.id,
+                product_name=product.name,
+                product_code=product_code,
+                quantity=qty,
+                unit_price=unit_price,
+                discount=line_discount,
+                total=line_total,
+            )
         )
 
         db.add(
@@ -434,53 +416,61 @@ async def create_sale(
                 shop_id=shop_id,
                 product_id=product.id,
                 user_id=user_id,
-                movement_type=StockMovementType.SALE,
-                quantity=-requested_quantity,
-                reference=invoice_number,
-                notes=f"Sale {invoice_number}",
+                movement_type=StockMovementType.SALE.value,
+                quantity=-qty,
+                balance_after=product.stock_quantity,
+                reference_type="sale",
+                reference_id=sale.id,
+                notes=f"Sale {receipt_number}",
             )
         )
 
-    for payment in request.payments:
+    for payment in payload.payments:
         amount = money(payment.amount)
+
+        received = (
+            money(payment.received_amount)
+            if payment.received_amount is not None
+            else amount
+        )
+
+        change = (
+            money(received - amount)
+            if payment.method == "cash"
+            else Decimal("0.00")
+        )
 
         db.add(
             Payment(
                 sale_id=sale.id,
                 method=payment.method,
                 amount=amount,
+                received_amount=received,
+                change_amount=change,
                 reference=payment.reference,
                 notes=payment.notes,
             )
         )
 
-        if payment.method == "cash":
-            register = await get_open_cash_register(
-                db,
-                shop_id,
-            )
-
-            if not register:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "Open the cash register before accepting "
-                        "cash payments."
-                    ),
-                )
-
+        if payment.method == "cash" and cash_register:
             db.add(
                 CashMovement(
-                    cash_register_id=register.id,
+                    cash_register_id=cash_register.id,
                     user_id=user_id,
-                    movement_type=CashMovementType.SALE,
+                    movement_type=CashMovementType.SALE.value,
                     amount=amount,
-                    reference=invoice_number,
-                    notes=f"Cash payment for {invoice_number}",
+                    reference_id=sale.id,
+                    description=f"Cash sale {receipt_number}",
                 )
             )
 
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    await db.refresh(sale)
 
     result = await db.execute(
         select(Sale)
@@ -518,7 +508,7 @@ async def get_sale(
 
     if not sale:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Sale not found.",
         )
 
@@ -528,16 +518,19 @@ async def get_sale(
 async def list_sales(
     db: AsyncSession,
     shop_id: UUID,
-    limit: int = 100,
-    offset: int = 0,
+    page: int = 1,
+    page_size: int = 50,
 ) -> tuple[list[Sale], int]:
-    count_result = await db.execute(
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 100)
+
+    total_result = await db.execute(
         select(func.count(Sale.id)).where(
             Sale.shop_id == shop_id
         )
     )
 
-    total = count_result.scalar_one() or 0
+    total = int(total_result.scalar() or 0)
 
     result = await db.execute(
         select(Sale)
@@ -547,8 +540,8 @@ async def list_sales(
         )
         .where(Sale.shop_id == shop_id)
         .order_by(Sale.created_at.desc())
-        .offset(offset)
-        .limit(limit)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     )
 
     return list(result.scalars().all()), total
