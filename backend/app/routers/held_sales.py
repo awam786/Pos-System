@@ -2,12 +2,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter
 
-from app.dependencies import DbSession, get_current_user
-from app.models.user import User
-from app.permissions import Permission
+from app.dependencies import CurrentUser, DbSession
 from app.schemas.held_sale import (
     HeldSaleCreate,
     HeldSaleItemResponse,
@@ -22,6 +19,7 @@ from app.services.held_sales import (
     list_held_sales,
 )
 from app.services.permissions import require_permission
+from app.permissions import Permission
 
 
 router = APIRouter(
@@ -31,7 +29,7 @@ router = APIRouter(
 
 
 async def serialize(
-    db: AsyncSession,
+    db: DbSession,
     held_sale,
 ) -> HeldSaleResponse:
     items = await get_held_sale_items(
@@ -65,10 +63,13 @@ async def serialize(
 )
 async def create(
     payload: HeldSaleCreate,
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.SALES)
+    db: DbSession,
+    current_user: CurrentUser,
+) -> HeldSaleResponse:
+    require_permission(
+        current_user,
+        Permission.SALES,
+    )
 
     held_sale = await create_held_sale(
         db,
@@ -88,10 +89,13 @@ async def create(
     response_model=HeldSaleListResponse,
 )
 async def list_all(
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.SALES)
+    db: DbSession,
+    current_user: CurrentUser,
+) -> HeldSaleListResponse:
+    require_permission(
+        current_user,
+        Permission.SALES,
+    )
 
     items, total = await list_held_sales(
         db,
@@ -115,16 +119,27 @@ async def list_all(
 )
 async def get(
     held_sale_id: UUID,
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.SALES)
+    db: DbSession,
+    current_user: CurrentUser,
+) -> HeldSaleResponse:
+    require_permission(
+        current_user,
+        Permission.SALES,
+    )
 
     held_sale = await get_held_sale(
         db,
         current_user.shop_id,
         held_sale_id,
     )
+
+    if held_sale is None:
+        from fastapi import HTTPException, status
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Held sale not found.",
+        )
 
     return await serialize(
         db,
@@ -138,10 +153,13 @@ async def get(
 )
 async def delete(
     held_sale_id: UUID,
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.SALES)
+    db: DbSession,
+    current_user: CurrentUser,
+) -> None:
+    require_permission(
+        current_user,
+        Permission.SALES,
+    )
 
     await delete_held_sale(
         db,
