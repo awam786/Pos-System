@@ -12,6 +12,8 @@ from app.database import (
     close_database,
     init_database,
 )
+from app.services.bootstrap import bootstrap_application
+from app.routers import api_router
 
 
 @asynccontextmanager
@@ -19,8 +21,8 @@ async def lifespan(app: FastAPI):
     """
     Application lifecycle.
 
-    Database initialization and connection verification happen when the
-    application starts. Cleanup happens during shutdown.
+    Database tables are created first, the initial shop/owner is bootstrapped,
+    and PostgreSQL connectivity is verified before the API accepts traffic.
     """
 
     await init_database()
@@ -32,6 +34,8 @@ async def lifespan(app: FastAPI):
             "PostgreSQL is unavailable. "
             "Check DATABASE_URL and database connectivity."
         )
+
+    await bootstrap_application()
 
     yield
 
@@ -59,6 +63,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(api_router)
 
 
 @app.get("/", include_in_schema=False)
@@ -98,7 +105,8 @@ async def unhandled_exception_handler(request, exc):
     """
     Final safety net for unexpected exceptions.
 
-    Detailed exception information is intentionally not exposed to clients.
+    Detailed exception information is intentionally not exposed to clients
+    unless DEBUG is enabled.
     """
 
     if settings.debug:
