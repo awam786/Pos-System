@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, status
 
-from app.dependencies import DbSession, get_current_user
-from app.models.user import User
+from app.dependencies import CurrentUser, DbSession
+from app.models import User
 from app.permissions import Permission
 from app.schemas.purchase_return import (
     PurchaseCreate,
@@ -83,14 +82,17 @@ def serialize_return(return_record) -> ReturnResponse:
 @router.post(
     "/purchases",
     response_model=PurchaseResponse,
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
 )
 async def create_purchase_endpoint(
     payload: PurchaseCreate,
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.PURCHASES)
+    db: DbSession,
+    current_user: CurrentUser,
+) -> PurchaseResponse:
+    require_permission(
+        current_user,
+        Permission.PURCHASES,
+    )
 
     purchase = await create_purchase(
         db,
@@ -107,10 +109,13 @@ async def create_purchase_endpoint(
     response_model=list[PurchaseResponse],
 )
 async def list_purchase_endpoint(
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.PURCHASES)
+    db: DbSession,
+    current_user: CurrentUser,
+) -> list[PurchaseResponse]:
+    require_permission(
+        current_user,
+        Permission.PURCHASES,
+    )
 
     purchases = await list_purchases(
         db,
@@ -129,10 +134,13 @@ async def list_purchase_endpoint(
 )
 async def get_purchase_endpoint(
     purchase_id: UUID,
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.PURCHASES)
+    db: DbSession,
+    current_user: CurrentUser,
+) -> PurchaseResponse:
+    require_permission(
+        current_user,
+        Permission.PURCHASES,
+    )
 
     purchase = await get_purchase(
         db,
@@ -140,20 +148,29 @@ async def get_purchase_endpoint(
         purchase_id,
     )
 
+    if purchase is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Purchase not found.",
+        )
+
     return serialize_purchase(purchase)
 
 
 @router.post(
     "/returns",
     response_model=ReturnResponse,
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
 )
 async def create_return_endpoint(
     payload: ReturnCreate,
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.RETURNS)
+    db: DbSession,
+    current_user: CurrentUser,
+) -> ReturnResponse:
+    require_permission(
+        current_user,
+        Permission.RETURNS,
+    )
 
     return_record = await create_return(
         db,
@@ -171,15 +188,24 @@ async def create_return_endpoint(
 )
 async def get_return_endpoint(
     return_id: UUID,
-    db: AsyncSession = Depends(DbSession),
-    current_user: User = Depends(get_current_user),
-):
-    require_permission(current_user, Permission.RETURNS)
+    db: DbSession,
+    current_user: CurrentUser,
+) -> ReturnResponse:
+    require_permission(
+        current_user,
+        Permission.RETURNS,
+    )
 
     return_record = await get_return(
         db,
         current_user.shop_id,
         return_id,
     )
+
+    if return_record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Return not found.",
+        )
 
     return serialize_return(return_record)
