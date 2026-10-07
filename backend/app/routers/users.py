@@ -18,7 +18,7 @@ from app.security import hash_password, verify_password
 
 
 router = APIRouter(
-    prefix="/api/users",
+    prefix="/users",
     tags=["Users"],
 )
 
@@ -122,6 +122,7 @@ async def create_user(
     )
 
     db.add(user)
+
     await db.commit()
     await db.refresh(user)
 
@@ -239,7 +240,9 @@ async def reset_user_password(
 ) -> dict[str, str]:
     ensure_user_management_access(current_user)
 
-    new_password = str(payload.get("new_password", ""))
+    new_password = str(
+        payload.get("new_password", "")
+    )
 
     if len(new_password) < 6:
         raise HTTPException(
@@ -262,7 +265,9 @@ async def reset_user_password(
             detail="User not found.",
         )
 
-    user.password_hash = hash_password(new_password)
+    user.password_hash = hash_password(
+        new_password
+    )
 
     await db.commit()
 
