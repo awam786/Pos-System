@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 
 from app.dependencies import CurrentUser, DbSession
+from app.permissions import Permission
 from app.schemas.held_sale import (
     HeldSaleCreate,
     HeldSaleItemResponse,
@@ -19,7 +20,6 @@ from app.services.held_sales import (
     list_held_sales,
 )
 from app.services.permissions import require_permission
-from app.permissions import Permission
 
 
 router = APIRouter(
@@ -59,7 +59,7 @@ async def serialize(
 @router.post(
     "",
     response_model=HeldSaleResponse,
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
 )
 async def create(
     payload: HeldSaleCreate,
@@ -134,8 +134,6 @@ async def get(
     )
 
     if held_sale is None:
-        from fastapi import HTTPException, status
-
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Held sale not found.",
@@ -149,20 +147,35 @@ async def get(
 
 @router.delete(
     "/{held_sale_id}",
-    status_code=204,
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
 )
 async def delete(
     held_sale_id: UUID,
     db: DbSession,
     current_user: CurrentUser,
-) -> None:
+):
     require_permission(
         current_user,
         Permission.SALES,
     )
+
+    held_sale = await get_held_sale(
+        db,
+        current_user.shop_id,
+        held_sale_id,
+    )
+
+    if held_sale is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Held sale not found.",
+        )
 
     await delete_held_sale(
         db,
         current_user.shop_id,
         held_sale_id,
     )
+
+    return None
