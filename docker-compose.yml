@@ -1,0 +1,86 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pos
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pos_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U postgres -d pos"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pos-backend
+    restart: unless-stopped
+    environment:
+      APP_NAME: Professional General Store POS
+      APP_ENV: development
+      DEBUG: "true"
+      HOST: 0.0.0.0
+      PORT: 8000
+
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/pos
+
+      SECRET_KEY: local-development-secret-change-me
+      ACCESS_TOKEN_EXPIRE_MINUTES: 720
+
+      INITIAL_SHOP_NAME: General Store
+      INITIAL_SHOP_ADDRESS:
+      INITIAL_SHOP_PHONE:
+      INITIAL_SHOP_EMAIL:
+
+      INITIAL_OWNER_USERNAME: admin
+      INITIAL_OWNER_PASSWORD: admin123
+      INITIAL_OWNER_NAME: Store Owner
+      INITIAL_OWNER_EMAIL:
+
+      DEFAULT_CURRENCY: PKR
+      DEFAULT_TIMEZONE: Asia/Karachi
+      DEFAULT_RECEIPT_WIDTH: 80
+      DEFAULT_RECEIPT_FOOTER: Thank you for shopping with us!
+
+      CORS_ORIGINS: http://localhost:5173
+
+      MAX_UPLOAD_SIZE_MB: 5
+
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pos-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:8000/api
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  pos_postgres_data:
