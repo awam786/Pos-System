@@ -26,10 +26,8 @@ import {
 } from "react";
 
 
-const API = (
-  import.meta.env.VITE_API_URL ||
-  "http://localhost:8000/api"
-).replace(/\/$/, "");
+const API =
+  "https://pos-system-production-61d5.up.railway.app/api";
 
 
 type User = {
