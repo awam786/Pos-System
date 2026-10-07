@@ -1,141 +1,81 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from uuid import UUID
 
-from fastapi import HTTPException
-from sqlalchemy import func, select
+from fastapi import HTTPException, status
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.models import HeldSale, HeldSaleItem, Product
+from app.models.inventory import HeldSale, HeldSaleItem
+from app.models.partner import Customer
+from app.models.product import Product
 from app.schemas.held_sale import HeldSaleCreate
-from app.services.sales import calculate_discount, calculate_line, money, quantity
 
 
 async def create_held_sale(
     db: AsyncSession,
     shop_id: UUID,
     user_id: UUID,
-    request: HeldSaleCreate,
+    payload: HeldSaleCreate,
 ) -> HeldSale:
-    if not request.items:
-        raise HTTPException(
-            status_code=400,
-            detail="A held sale must contain at least one item.",
+    if payload.customer_id:
+        customer = await db.scalar(
+            select(Customer).where(
+                Customer.id == payload.customer_id,
+                Customer.shop_id == shop_id,
+            )
         )
 
-    products_result = await db.execute(
-        select(Product).where(
-            Product.shop_id == shop_id,
-            Product.id.in_(
-                [item.product_id for item in request.items]
-            ),
-        )
-    )
-
-    products = {
-        product.id: product
-        for product in products_result.scalars().all()
-    }
-
-    if len(products) != len(
-        {item.product_id for item in request.items}
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="One or more products were not found.",
-        )
-
-    subtotal = Decimal("0.00")
-    item_discount_total = Decimal("0.00")
-
-    calculated = []
-
-    for item in request.items:
-        product = products[item.product_id]
-
-        if not product.active:
+        if not customer:
             raise HTTPException(
-                status_code=400,
-                detail=f"Product '{product.name}' is inactive.",
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Customer not found.",
             )
 
-        qty = quantity(item.quantity)
-
-        unit_price, discount, line_total = calculate_line(
-            product,
-            item,
-        )
-
-        subtotal += money(unit_price * qty)
-        item_discount_total += discount
-
-        calculated.append(
-            (
-                item,
-                product,
-                qty,
-                unit_price,
-                discount,
-                line_total,
+    for item in payload.items:
+        product = await db.scalar(
+            select(Product).where(
+                Product.id == item.product_id,
+                Product.shop_id == shop_id,
+                Product.active.is_(True),
             )
         )
 
-    subtotal = money(subtotal)
-
-    bill_discount = calculate_discount(
-        subtotal - item_discount_total,
-        request.bill_discount_type,
-        request.bill_discount_value,
-    )
-
-    total = money(
-        subtotal - item_discount_total - bill_discount
-    )
+        if not product:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="One or more products were not found.",
+            )
 
     held_sale = HeldSale(
         shop_id=shop_id,
         user_id=user_id,
-        customer_id=request.customer_id,
-        subtotal=subtotal,
-        discount_type=request.bill_discount_type,
-        discount_value=money(request.bill_discount_value),
-        total=total,
-        notes=request.notes,
+        customer_id=payload.customer_id,
+        reference=payload.reference,
+        notes=payload.notes,
     )
 
     db.add(held_sale)
     await db.flush()
 
-    for (
-        item,
-        product,
-        qty,
-        unit_price,
-        discount,
-        line_total,
-    ) in calculated:
+    for item in payload.items:
         db.add(
             HeldSaleItem(
                 held_sale_id=held_sale.id,
-                product_id=product.id,
-                quantity=qty,
-                unit_price=unit_price,
-                discount_type=item.discount_type,
-                discount_value=money(item.discount_value),
-                discount_amount=discount,
-                line_total=line_total,
+                product_id=item.product_id,
+                quantity=item.quantity,
+                unit_price=item.unit_price,
+                discount=item.discount,
             )
         )
 
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
 
-    return await get_held_sale(
-        db,
-        shop_id,
-        held_sale.id,
-    )
+    return held_sale
 
 
 async def get_held_sale(
@@ -143,52 +83,52 @@ async def get_held_sale(
     shop_id: UUID,
     held_sale_id: UUID,
 ) -> HeldSale:
-    result = await db.execute(
-        select(HeldSale)
-        .options(
-            selectinload(HeldSale.items),
-        )
-        .where(
+    held_sale = await db.scalar(
+        select(HeldSale).where(
             HeldSale.id == held_sale_id,
             HeldSale.shop_id == shop_id,
         )
     )
 
-    held_sale = result.scalar_one_or_none()
-
     if not held_sale:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail="Held sale not found.",
         )
 
     return held_sale
 
 
+async def get_held_sale_items(
+    db: AsyncSession,
+    held_sale_id: UUID,
+) -> list[HeldSaleItem]:
+    result = await db.execute(
+        select(HeldSaleItem)
+        .where(
+            HeldSaleItem.held_sale_id == held_sale_id
+        )
+        .order_by(HeldSaleItem.created_at.asc())
+    )
+
+    return list(result.scalars().all())
+
+
 async def list_held_sales(
     db: AsyncSession,
     shop_id: UUID,
-    user_id: UUID | None = None,
 ) -> tuple[list[HeldSale], int]:
-    conditions = [
-        HeldSale.shop_id == shop_id,
-    ]
-
-    if user_id:
-        conditions.append(HeldSale.user_id == user_id)
-
     count_result = await db.execute(
-        select(func.count(HeldSale.id)).where(*conditions)
+        select(func.count(HeldSale.id)).where(
+            HeldSale.shop_id == shop_id
+        )
     )
 
-    total = count_result.scalar_one() or 0
+    total = int(count_result.scalar() or 0)
 
     result = await db.execute(
         select(HeldSale)
-        .options(
-            selectinload(HeldSale.items),
-        )
-        .where(*conditions)
+        .where(HeldSale.shop_id == shop_id)
         .order_by(HeldSale.created_at.desc())
     )
 
@@ -200,11 +140,21 @@ async def delete_held_sale(
     shop_id: UUID,
     held_sale_id: UUID,
 ) -> None:
-    held_sale = await get_held_sale(
+    await get_held_sale(
         db,
         shop_id,
         held_sale_id,
     )
 
-    await db.delete(held_sale)
-    await db.commit()
+    await db.execute(
+        delete(HeldSale).where(
+            HeldSale.id == held_sale_id,
+            HeldSale.shop_id == shop_id,
+        )
+    )
+
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
