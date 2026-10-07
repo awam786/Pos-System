@@ -9,7 +9,6 @@ from app.models import (
     CashMovementType,
     CashRegister,
     Expense,
-    Product,
     StockMovement,
 )
 from app.permissions import Permission
@@ -94,10 +93,7 @@ async def create_stock_adjustment(
     db: DbSession,
     current_user: CurrentUser,
 ):
-    require_permission(
-        current_user,
-        Permission.MANAGE_STOCK,
-    )
+    require_permission(current_user, Permission.MANAGE_STOCK)
 
     product_id = parse_uuid(
         payload.product_id,
@@ -136,7 +132,10 @@ async def get_stock(
         stock_quantity=product.stock_quantity,
         minimum_stock=product.minimum_stock,
         maximum_stock=product.maximum_stock,
-        low_stock=product.stock_quantity <= product.minimum_stock,
+        low_stock=(
+            product.stock_quantity <= product.minimum_stock
+            and product.stock_quantity > 0
+        ),
         out_of_stock=product.stock_quantity <= 0,
     )
 
@@ -173,8 +172,8 @@ async def list_stock_movements(
     )
 
     return [
-        stock_movement_response(movement)
-        for movement in result.scalars().all()
+        stock_movement_response(item)
+        for item in result.scalars().all()
     ]
 
 
@@ -297,9 +296,7 @@ async def open_register(
     return cash_register_response(register)
 
 
-@router.post(
-    "/cash-register/cash-in",
-)
+@router.post("/cash-register/cash-in")
 async def cash_in(
     payload: CashMovementCreate,
     db: DbSession,
@@ -326,7 +323,7 @@ async def cash_in(
         register,
         current_user.id,
         payload.amount,
-        CashMovementType.IN.value,
+        CashMovementType.CASH_IN.value,
         payload.description,
     )
 
@@ -337,9 +334,7 @@ async def cash_in(
     }
 
 
-@router.post(
-    "/cash-register/cash-out",
-)
+@router.post("/cash-register/cash-out")
 async def cash_out(
     payload: CashMovementCreate,
     db: DbSession,
@@ -366,7 +361,7 @@ async def cash_out(
         register,
         current_user.id,
         payload.amount,
-        CashMovementType.OUT.value,
+        CashMovementType.CASH_OUT.value,
         payload.description,
     )
 
